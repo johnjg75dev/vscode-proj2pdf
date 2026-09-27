@@ -1,0 +1,327 @@
+{
+  "name": "project-source-exporter",
+  "displayName": "Project Source Exporter",
+  "description": "Export all source code in your project to a PDF (with syntax highlighting, TOC, folder tree, page numbers) or copy it to the clipboard.",
+  "version": "1.0.0",
+  "publisher": "your-publisher-name",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "pdf",
+    "export",
+    "print",
+    "source code",
+    "clipboard",
+    "llm"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "projectExporter.export",
+        "title": "Export Project Source...",
+        "category": "Project Exporter",
+        "icon": "$(export)"
+      },
+      {
+        "command": "projectExporter.exportPdf",
+        "title": "Export Project Source to PDF",
+        "category": "Project Exporter"
+      },
+      {
+        "command": "projectExporter.copyToClipboard",
+        "title": "Copy Project Source to Clipboard",
+        "category": "Project Exporter"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "projectExporter.exportPdf",
+          "when": "explorerResourceIsFolder",
+          "group": "7_projectExporter@1"
+        },
+        {
+          "command": "projectExporter.copyToClipboard",
+          "when": "explorerResourceIsFolder",
+          "group": "7_projectExporter@2"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "projectExporter.export",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e"
+      }
+    ],
+    "configuration": {
+      "title": "Project Source Exporter",
+      "properties": {
+        "projectExporter.codeExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "File extensions (without dot) treated as code files.",
+          "default": [
+            "ts",
+            "tsx",
+            "js",
+            "jsx",
+            "mjs",
+            "cjs",
+            "mts",
+            "cts",
+            "py",
+            "pyi",
+            "java",
+            "kt",
+            "kts",
+            "scala",
+            "groovy",
+            "gradle",
+            "c",
+            "h",
+            "cpp",
+            "cc",
+            "cxx",
+            "hpp",
+            "hh",
+            "hxx",
+            "cs",
+            "fs",
+            "vb",
+            "go",
+            "rs",
+            "swift",
+            "m",
+            "mm",
+            "dart",
+            "rb",
+            "php",
+            "pl",
+            "pm",
+            "lua",
+            "r",
+            "jl",
+            "ex",
+            "exs",
+            "erl",
+            "hrl",
+            "hs",
+            "ml",
+            "mli",
+            "clj",
+            "cljs",
+            "elm",
+            "zig",
+            "nim",
+            "sol",
+            "sql",
+            "sh",
+            "bash",
+            "zsh",
+            "fish",
+            "ps1",
+            "psm1",
+            "bat",
+            "cmd",
+            "html",
+            "htm",
+            "css",
+            "scss",
+            "sass",
+            "less",
+            "vue",
+            "svelte",
+            "astro",
+            "json",
+            "jsonc",
+            "yaml",
+            "yml",
+            "toml",
+            "xml",
+            "graphql",
+            "gql",
+            "proto",
+            "tf",
+            "cmake"
+          ]
+        },
+        "projectExporter.markdownExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "md",
+            "markdown",
+            "mdx"
+          ],
+          "description": "Extensions included when 'Include Markdown' is enabled."
+        },
+        "projectExporter.includeFileNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Dockerfile",
+            "Makefile",
+            "CMakeLists.txt",
+            "Gemfile",
+            "Rakefile",
+            "Jenkinsfile"
+          ],
+          "description": "Exact file names (without extension) that should also be included."
+        },
+        "projectExporter.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/node_modules/**",
+            "**/.git/**",
+            "**/dist/**",
+            "**/out/**",
+            "**/build/**",
+            "**/bin/**",
+            "**/obj/**",
+            "**/target/**",
+            "**/.next/**",
+            "**/.nuxt/**",
+            "**/.svelte-kit/**",
+            "**/coverage/**",
+            "**/__pycache__/**",
+            "**/.venv/**",
+            "**/venv/**",
+            "**/vendor/**",
+            "**/.vscode-test/**",
+            "**/.idea/**",
+            "**/*.min.js",
+            "**/*.min.css",
+            "**/*.map",
+            "**/package-lock.json",
+            "**/yarn.lock",
+            "**/pnpm-lock.yaml"
+          ],
+          "description": "Glob patterns to exclude."
+        },
+        "projectExporter.respectGitignore": {
+          "type": "boolean",
+          "default": true,
+          "description": "Skip files matched by .gitignore files in the workspace."
+        },
+        "projectExporter.maxFileSizeKB": {
+          "type": "number",
+          "default": 1024,
+          "description": "Skip files larger than this (KB). 0 = no limit."
+        },
+        "projectExporter.promptForOptions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the options picker on every export. If false, the defaults below are used."
+        },
+        "projectExporter.defaults.includeMarkdown": {
+          "type": "boolean",
+          "default": false
+        },
+        "projectExporter.defaults.syntaxHighlighting": {
+          "type": "boolean",
+          "default": true
+        },
+        "projectExporter.defaults.minify": {
+          "type": "boolean",
+          "default": false
+        },
+        "projectExporter.defaults.tableOfContents": {
+          "type": "boolean",
+          "default": true
+        },
+        "projectExporter.defaults.folderStructure": {
+          "type": "boolean",
+          "default": true
+        },
+        "projectExporter.minifyLevel": {
+          "type": "string",
+          "enum": [
+            "collapse",
+            "aggressive"
+          ],
+          "enumDescriptions": [
+            "Every run of whitespace (including newlines) becomes a single space.",
+            "Also removes spaces next to punctuation/operators ({ } ( ) ; , = etc.)."
+          ],
+          "default": "collapse"
+        },
+        "projectExporter.tabSize": {
+          "type": "number",
+          "default": 4
+        },
+        "projectExporter.pdf.pageSize": {
+          "type": "string",
+          "enum": [
+            "A4",
+            "Letter",
+            "Legal",
+            "A3"
+          ],
+          "default": "A4"
+        },
+        "projectExporter.pdf.fontSize": {
+          "type": "number",
+          "default": 8,
+          "minimum": 4,
+          "maximum": 16
+        },
+        "projectExporter.pdf.lineNumbers": {
+          "type": "boolean",
+          "default": true
+        },
+        "projectExporter.pdf.startEachFileOnNewPage": {
+          "type": "boolean",
+          "default": false
+        },
+        "projectExporter.pdf.fontPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to a monospace .ttf/.otf font (for full Unicode support, e.g. DejaVu Sans Mono). Empty = built-in Courier (Latin-1 only)."
+        },
+        "projectExporter.clipboard.useCodeFences": {
+          "type": "boolean",
+          "default": true,
+          "description": "Wrap each file in Markdown ``` code fences when copying to the clipboard."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "highlight.js": "^11.9.0",
+    "ignore": "^5.3.1",
+    "pdfkit": "^0.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/pdfkit": "^0.13.4",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^4.0.0",
+    "typescript": "^5.4.0"
+  },
+  "allowScripts": {
+    "@vscode/vsce-sign@2.1.0": true
+  }
+}
