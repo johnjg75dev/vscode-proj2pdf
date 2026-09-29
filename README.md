@@ -23,6 +23,19 @@ You'll be asked for:
 - A header bar per file, optional line numbers and long lines wrapped at the page edge
 - Configurable page header/footer templates (see below)
 
+## File Filter
+The export panel shows a **Files** section. Before it opens, the extension scans the
+target folder(s) for project markers (`package.json`, `pyproject.toml`, `pom.xml`,
+`*.csproj`, `go.mod`, `Cargo.toml`, ...) and tallies the extensions actually present,
+then pre-selects what you most likely want (with per-extension file counts).
+
+- **Extensions to include**: checkboxes for every detected extension, plus a free-form
+  box for extras (`ts, .py, *.go`). Your last choice is remembered; **Reset to detected**
+  restores the auto-detected set.
+- **Extensions to ignore**: always wins over the include list (e.g. `map, lock`).
+- **Files with other extensions**: `Include` (default to all files — also pulls in any other
+  known code types from Settings) or `Exclude` (only the listed files, i.e. default to no files).
+
 ## Analysis Sections
 Optional appendices enabled per section in the export panel or via `projectExporter.sections.*` settings.
 Accurate parsing for TS/JS, Python, Java, C#, C++ and Go; best-effort heuristics for other languages.
@@ -77,3 +90,14 @@ npm run compile
 # Press F5 in VS Code to launch an Extension Development Host
 npx vsce package   # creates a .vsix you can install
 ```
+
+## Publishing (`publish.bat`)
+Double-click `publish.bat` (or run it from a console) for an interactive menu:
+
+- Versioning: bump patch/minor/major or set an explicit version
+  (updates `package.json` + `package-lock.json`, no tag until you say so)
+- Local: `npm ci`, compile, package a `.vsix` you can install directly
+- GitHub: commit + push `main`, then tag `vX.Y.Z` + push the tag — this triggers
+  `.github/workflows/release.yml`, which builds and publishes the GitHub Release
+- `FULL publish` runs the whole chain; `W` watches the Actions run.
+  Requires `node`, `git` (and `gh` for release watching) on PATH.

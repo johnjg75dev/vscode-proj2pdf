@@ -34,3 +34,12 @@
 - [x] Extractor checks (TS/Python/Java/C#/C++/Go), strings comment-exclusion, dep resolution, usage def-exclusion, template vars
 - [x] End-to-end PDF (9 pages, sections + header/footer) + clipboard markdown
 - [x] README update (sections, fonts, header/footer vars, webview)
+
+## File filter + publish script (v1.2.0 candidate)
+- [x] `src/projectDetect.ts` — marker files → kinds, ext tally (top 30, ≤5000 files), suggestExtensions + parseExtList
+- [x] `config.ts` — FileFilterOptions + resolveCollectorSettings (defaultAll merge, ignore-wins, ignore globs)
+- [x] `panel.ts` — Files section: detected checkboxes w/ counts, extra include, ignore, all/listed policy, reset-to-detected
+- [x] `extension.ts` — detect before panel, filter into collectFiles, log effective set, QuickPick fallback
+- [x] `publish.bat` — menu: status, bump patch/minor/major/explicit, ci, compile, local vsix, commit+push, tag+push (Release), full flow, watch
+- [x] `npm run compile` clean; filter logic verified (parse/suggest/all/listed/empty)
+- [x] README (File Filter + publish.bat), .vscodeignore (publish.bat, TODO.md)

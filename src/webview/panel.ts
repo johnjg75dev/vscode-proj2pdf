@@ -1,15 +1,27 @@
 import * as vscode from 'vscode';
-import { ExportOptions, MinifyLevel, ToggleOptions } from '../config';
+import { FileFilterOptions, MinifyLevel, ToggleOptions } from '../config';
 import { SectionOptions, defaultSectionOptions } from '../analysis/types';
+import { ProjectDetection, parseExtList } from '../projectDetect';
 
 export interface PanelResult {
   toggles: ToggleOptions;
   sections: SectionOptions;
   minifyLevel: MinifyLevel;
+  fileFilter: FileFilterOptions;
+}
+
+export interface PanelInit {
+  toggles: ToggleOptions;
+  minifyLevel: MinifyLevel;
+  sections: SectionOptions;
+  /** Effective include set when the user has no stored filter (usually detected). */
+  fileFilter: FileFilterOptions;
+  detection: ProjectDetection;
 }
 
 const LAST_OPTIONS_KEY = 'projectExporter.lastOptions';
 const LAST_SECTIONS_KEY = 'projectExporter.lastSections';
+const LAST_FILTER_KEY = 'projectExporter.lastFileFilter';
 
 interface StoredToggles extends Partial<ToggleOptions> {
   minifyLevel?: MinifyLevel;
@@ -18,15 +30,19 @@ interface StoredToggles extends Partial<ToggleOptions> {
 export async function openExportPanel(
   context: vscode.ExtensionContext,
   target: 'pdf' | 'clipboard',
-  toggles: ToggleOptions,
-  minifyLevel: MinifyLevel,
-  sections: SectionOptions
+  init: PanelInit
 ): Promise<PanelResult | undefined> {
   const stored = context.globalState.get<StoredToggles>(LAST_OPTIONS_KEY, {});
   const storedSections = context.globalState.get<Partial<SectionOptions>>(LAST_SECTIONS_KEY, {});
-  const initToggles: ToggleOptions = { ...toggles, ...stripUndefined(stored) };
-  const initMinify: MinifyLevel = stored.minifyLevel ?? minifyLevel;
-  const initSections: SectionOptions = deepMergeSections(sections, storedSections);
+  const storedFilter = context.globalState.get<Partial<FileFilterOptions>>(LAST_FILTER_KEY, {});
+  const initToggles: ToggleOptions = { ...init.toggles, ...stripUndefined(stored) };
+  const initMinify: MinifyLevel = stored.minifyLevel ?? init.minifyLevel;
+  const initSections: SectionOptions = deepMergeSections(init.sections, storedSections);
+  const initFilter: FileFilterOptions = {
+    includeExts: storedFilter.includeExts ?? init.fileFilter.includeExts,
+    ignoreExts: storedFilter.ignoreExts ?? init.fileFilter.ignoreExts,
+    defaultAll: storedFilter.defaultAll ?? init.fileFilter.defaultAll
+  };
 
   const panel = vscode.window.createWebviewPanel(
     'projectExporterConfig',
@@ -35,7 +51,7 @@ export async function openExportPanel(
     { enableScripts: true, retainContextWhenHidden: true }
   );
 
-  panel.webview.html = htmlFor(target, initToggles, initMinify, initSections);
+  panel.webview.html = htmlFor(target, initToggles, initMinify, initSections, initFilter, init.detection);
 
   return new Promise<PanelResult | undefined>((resolve) => {
     let settled = false;
@@ -57,6 +73,7 @@ export async function openExportPanel(
           minifyLevel: parsed.minifyLevel
         });
         await context.globalState.update(LAST_SECTIONS_KEY, parsed.sections);
+        await context.globalState.update(LAST_FILTER_KEY, parsed.fileFilter);
         done(parsed);
       } else if (msg?.type === 'cancel') {
         done(undefined);
@@ -88,7 +105,9 @@ function deepMergeSections(base: SectionOptions, overlay: Partial<SectionOptions
   return merged;
 }
 
-function parseState(state: Record<string, string | boolean>, target: 'pdf' | 'clipboard'): PanelResult {
+type PanelState = Record<string, string | boolean | string[]>;
+
+function parseState(state: PanelState, target: 'pdf' | 'clipboard'): PanelResult {
   const b = (k: string): boolean => state[k] === true || state[k] === 'on' || state[k] === 'true';
   const str = (k: string, fallback: string): string => {
     const v = state[k];
@@ -148,7 +167,20 @@ function parseState(state: Record<string, string | boolean>, target: 'pdf' | 'cl
     order: d.order
   };
   const minifyLevel: MinifyLevel = state['minifyLevel'] === 'aggressive' ? 'aggressive' : 'collapse';
-  return { toggles, sections, minifyLevel };
+
+  // File filter: checked boxes + free-form extras, minus ignored.
+  const checkedExts = Array.isArray(state['ff.checked']) ? state['ff.checked'] : [];
+  const extraInclude = parseExtList(str('ff.extraInclude', ''));
+  const ignoreExts = parseExtList(str('ff.ignore', ''));
+  const includeExts = [...new Set(
+    [...checkedExts.map((e) => e.toLowerCase()), ...extraInclude].filter((e) => e && !ignoreExts.includes(e))
+  )];
+  const fileFilter: FileFilterOptions = {
+    includeExts,
+    ignoreExts,
+    defaultAll: str('ff.policy', 'all') !== 'listed'
+  };
+  return { toggles, sections, minifyLevel, fileFilter };
 }
 
 function checked(v: boolean): string {
@@ -159,13 +191,31 @@ function selected(cur: string, val: string): string {
   return cur === val ? 'selected' : '';
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c));
+}
+
 function htmlFor(
   target: 'pdf' | 'clipboard',
   t: ToggleOptions,
   minifyLevel: MinifyLevel,
-  s: SectionOptions
+  s: SectionOptions,
+  f: FileFilterOptions,
+  detection: ProjectDetection
 ): string {
   const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">`;
+  const kindsHint = detection.kinds.length > 0
+    ? `Detected project type: <b>${detection.kinds.map(escapeHtml).join(', ')}</b>. Pre-selected the extensions you most likely want.`
+    : detection.extCounts.length > 0
+      ? `No project markers found — pre-selected by file frequency. Adjust below.`
+      : `Could not scan the project — showing configured extensions. Adjust below.`;
+  const includeSet = new Set(f.includeExts);
+  const suggestedSet = new Set(detection.suggested);
+  const boxes = detection.extCounts.length > 0
+    ? detection.extCounts.map((e) =>
+      `<label title="${e.count} file(s)"><input type="checkbox" class="ff-ext" value="${escapeHtml(e.ext)}" data-suggested="${suggestedSet.has(e.ext) ? '1' : '0'}" ${checked(includeSet.has(e.ext))}> .${escapeHtml(e.ext)} <span class="hint">(${e.count})</span></label>`
+    ).join('')
+    : `<span class="hint">No extensions scanned.</span>`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -183,7 +233,10 @@ fieldset { border: 1px solid var(--vscode-panel-border); border-radius: 6px; pad
 legend { font-weight: 600; font-size: 13px; padding: 0 6px; }
 .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 12px; }
 .opts label { display: flex; gap: 6px; align-items: center; }
+.extgrid { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; margin: 6px 0; }
+.extgrid label { display: flex; gap: 5px; align-items: center; border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 2px 8px; }
 select, input[type=number], input[type=text] { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 2px 6px; }
+input[type=text].wide { width: 100%; box-sizing: border-box; margin: 4px 0; }
 .actions { margin-top: 18px; display: flex; gap: 10px; }
 button { padding: 6px 18px; border-radius: 4px; cursor: pointer; }
 button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; }
@@ -207,6 +260,27 @@ ${target === 'pdf' ? `<label class="row"><input type="checkbox" id="syntaxHighli
 <option value="collapse" ${selected(minifyLevel, 'collapse')}>collapse</option>
 <option value="aggressive" ${selected(minifyLevel, 'aggressive')}>aggressive</option>
 </select></label>
+</div>
+
+<h2>Files</h2>
+<div class="sub">${kindsHint}</div>
+<fieldset><legend>Extensions to include</legend>
+<div class="extgrid">${boxes}</div>
+<label class="hint" for="ff.extraInclude">Extra extensions (comma/space separated, e.g. <code>ts, .py, *.go</code>):</label>
+<input type="text" class="wide" id="ff.extraInclude" placeholder="e.g. ts, py, go" value="">
+</fieldset>
+<fieldset><legend>Extensions to ignore</legend>
+<label class="hint" for="ff.ignore">These always win over the include list (e.g. <code>map, lock</code>):</label>
+<input type="text" class="wide" id="ff.ignore" placeholder="e.g. map, lock, min.js" value="${escapeHtml(f.ignoreExts.join(', '))}">
+<label class="row">Files with other extensions
+<select id="ff.policy">
+<option value="all" ${selected(f.defaultAll ? 'all' : 'listed', 'all')}>Include (default to all files)</option>
+<option value="listed" ${selected(f.defaultAll ? 'all' : 'listed', 'listed')}>Exclude (only listed files)</option>
+</select></label>
+<div class="hint">"Include" also pulls in any other known code types from Settings. "Exclude" exports only what is checked/listed above.</div>
+</fieldset>
+<div class="actions">
+<button class="ghost" id="resetFilterBtn">Reset to detected</button>
 </div>
 
 <h2>Analysis Sections</h2>
@@ -276,7 +350,7 @@ ${target === 'pdf' ? `<label class="row"><input type="checkbox" id="syntaxHighli
 
 <script>
 const vscode = acquireVsCodeApi();
-const ids = ['includeMarkdown','syntaxHighlighting','minify','tableOfContents','folderStructure','minifyLevel','sec.placement','sec.classList.enabled','sec.classList.sort','sec.classList.groupBy','sec.classList.showCtor','sec.classList.showMethods','sec.classList.showFields','sec.classList.showDefaults','sec.classList.showBaseClass','sec.functionList.enabled','sec.functionList.sort','sec.functionList.groupBy','sec.functionList.includeMethods','sec.functionList.showSigs','sec.functionList.showDefaults','sec.usages.enabledClasses','sec.usages.enabledFunctions','sec.usages.contextLines','sec.usages.maxHitsPerSymbol','sec.strings.enabled','sec.strings.sort','sec.strings.groupBy','sec.strings.minLength','sec.strings.dedupe','sec.strings.maxItems','sec.dependencies.enabled','sec.dependencies.direction','sec.dependencies.showUnresolved'];
+const ids = ['includeMarkdown','syntaxHighlighting','minify','tableOfContents','folderStructure','minifyLevel','ff.extraInclude','ff.ignore','ff.policy','sec.placement','sec.classList.enabled','sec.classList.sort','sec.classList.groupBy','sec.classList.showCtor','sec.classList.showMethods','sec.classList.showFields','sec.classList.showDefaults','sec.classList.showBaseClass','sec.functionList.enabled','sec.functionList.sort','sec.functionList.groupBy','sec.functionList.includeMethods','sec.functionList.showSigs','sec.functionList.showDefaults','sec.usages.enabledClasses','sec.usages.enabledFunctions','sec.usages.contextLines','sec.usages.maxHitsPerSymbol','sec.strings.enabled','sec.strings.sort','sec.strings.groupBy','sec.strings.minLength','sec.strings.dedupe','sec.strings.maxItems','sec.dependencies.enabled','sec.dependencies.direction','sec.dependencies.showUnresolved'];
 function collect() {
   const state = {};
   for (const id of ids) {
@@ -285,10 +359,17 @@ function collect() {
     if (el.type === 'checkbox') state[id] = el.checked;
     else state[id] = el.value;
   }
+  state['ff.checked'] = Array.from(document.querySelectorAll('.ff-ext')).filter((c) => c.checked).map((c) => c.value);
   return state;
 }
 document.getElementById('exportBtn').addEventListener('click', () => vscode.postMessage({ type: 'export', state: collect() }));
 document.getElementById('cancelBtn').addEventListener('click', () => vscode.postMessage({ type: 'cancel' }));
+document.getElementById('resetFilterBtn').addEventListener('click', () => {
+  document.querySelectorAll('.ff-ext').forEach((c) => { c.checked = c.getAttribute('data-suggested') === '1'; });
+  document.getElementById('ff.extraInclude').value = '';
+  document.getElementById('ff.ignore').value = '';
+  document.getElementById('ff.policy').value = 'all';
+});
 </script>
 </body>
 </html>`;

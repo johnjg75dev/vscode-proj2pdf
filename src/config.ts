@@ -12,10 +12,47 @@ export interface ToggleOptions {
   folderStructure: boolean;
 }
 
+export interface FileFilterOptions {
+  /** Extensions to include (no dot, lowercase). Effective include set. */
+  includeExts: string[];
+  /** Extensions to always exclude. Wins over includeExts. */
+  ignoreExts: string[];
+  /**
+   * True = also include any other known code extensions from settings that
+   * are not listed (default-all behavior). False = only the listed ones.
+   */
+  defaultAll: boolean;
+}
+
 export interface ExportOptions extends ToggleOptions {
   target: OutputTarget;
   minifyLevel: MinifyLevel;
   sections: SectionOptions;
+  fileFilter: FileFilterOptions;
+}
+
+/** Merges a user file filter over the configured collector settings. */
+export function resolveCollectorSettings(
+  base: CollectorSettings,
+  filter: FileFilterOptions
+): CollectorSettings {
+  const ignore = new Set(filter.ignoreExts.map((e) => e.toLowerCase()));
+  let codeExtensions: string[];
+  if (filter.defaultAll) {
+    codeExtensions = [...new Set([...base.codeExtensions, ...filter.includeExts])]
+      .map((e) => e.toLowerCase())
+      .filter((e) => e && !ignore.has(e));
+  } else {
+    codeExtensions = filter.includeExts
+      .map((e) => e.toLowerCase())
+      .filter((e) => e && !ignore.has(e));
+  }
+  const exclude = [...base.exclude];
+  for (const e of ignore) {
+    const glob = `**/*.${e}`;
+    if (!exclude.includes(glob)) exclude.push(glob);
+  }
+  return { ...base, codeExtensions, exclude };
 }
 
 export interface CollectorSettings {

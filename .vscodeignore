@@ -2,3 +2,5 @@
 src/**
 **/*.map
 tsconfig.json
+publish.bat
+TODO.md

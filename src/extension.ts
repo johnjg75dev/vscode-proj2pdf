@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import {
-  ExportOptions, MinifyLevel, OutputTarget, ToggleOptions,
+  ExportOptions, FileFilterOptions, MinifyLevel, OutputTarget, ToggleOptions,
   getClipboardSettings, getCollectorSettings, getDefaultToggles,
-  getMinifyLevel, getPdfSettings, getSectionOptions, shouldPromptForOptions
+  getMinifyLevel, getPdfSettings, getSectionOptions, resolveCollectorSettings,
+  shouldPromptForOptions
 } from './config';
 import { SectionOptions } from './analysis/types';
 import { ExportScope, SkippedFile, collectFiles } from './fileCollector';
@@ -11,11 +12,13 @@ import { renderPdf } from './pdfExporter';
 import { buildClipboardText } from './textExporter';
 import { analyzeFiles } from './analysis/index';
 import { openExportPanel } from './webview/panel';
+import { detectProject } from './projectDetect';
 import { unknownVars } from './headerFooter';
 import { ExportCancelledError } from './util';
 
 const LAST_OPTIONS_KEY = 'projectExporter.lastOptions';
 const LAST_SECTIONS_KEY = 'projectExporter.lastSections';
+const LAST_FILTER_KEY = 'projectExporter.lastFileFilter';
 let output: vscode.OutputChannel;
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -50,7 +53,7 @@ async function runExport(
     const target = presetTarget ?? (await pickTarget());
     if (!target) return;
 
-    const options = await pickOptions(context, target);
+    const options = await pickOptions(context, target, resolved.scopes);
     if (!options) return;
 
     let saveUri: vscode.Uri | undefined;
@@ -69,8 +72,14 @@ async function runExport(
       async (progress, token) => {
         const report = (message: string) => progress.report({ message });
 
+        const collectorSettings = resolveCollectorSettings(getCollectorSettings(), options.fileFilter);
+        output.appendLine(
+          `File filter: include [${collectorSettings.codeExtensions.join(', ')}]` +
+          (options.fileFilter.ignoreExts.length ? `, ignore [${options.fileFilter.ignoreExts.join(', ')}]` : '') +
+          ` (default-${options.fileFilter.defaultAll ? 'all' : 'listed'})`
+        );
         const { files, skipped } = await collectFiles(
-          resolved.scopes, getCollectorSettings(), options.includeMarkdown, token, report
+          resolved.scopes, collectorSettings, options.includeMarkdown, token, report
         );
         logSkipped(skipped);
 
@@ -188,9 +197,21 @@ async function pickTarget(): Promise<OutputTarget | undefined> {
   return pick?.target;
 }
 
+function defaultFileFilter(stored: Partial<FileFilterOptions> | undefined, fallback: FileFilterOptions): FileFilterOptions {
+  if (!stored || (stored.includeExts === undefined && stored.ignoreExts === undefined && stored.defaultAll === undefined)) {
+    return fallback;
+  }
+  return {
+    includeExts: stored.includeExts ?? fallback.includeExts,
+    ignoreExts: stored.ignoreExts ?? fallback.ignoreExts,
+    defaultAll: stored.defaultAll ?? fallback.defaultAll
+  };
+}
+
 async function pickOptions(
   context: vscode.ExtensionContext,
-  target: OutputTarget
+  target: OutputTarget,
+  scopes: ExportScope[]
 ): Promise<ExportOptions | undefined> {
   const toggles: ToggleOptions = {
     ...getDefaultToggles(),
@@ -200,22 +221,39 @@ async function pickOptions(
     ...getSectionOptions(),
     ...(shouldPromptForOptions() ? context.globalState.get<Partial<import('./analysis/types').SectionOptions>>(LAST_SECTIONS_KEY) : {})
   };
-  const build = (t: ToggleOptions, s: SectionOptions, level: MinifyLevel): ExportOptions =>
-    ({ ...t, target, minifyLevel: level, sections: s });
+  const collectorBase = getCollectorSettings();
+
+  // Detect the project type + present extensions so the panel can pre-select
+  // what the user most likely wants. Fast and failure-proof (falls back to config).
+  const detection = await detectProject(scopes, collectorBase.exclude.length ? `{${collectorBase.exclude.join(',')}}` : null);
+  const detectedFilter: FileFilterOptions = {
+    includeExts: detection.suggested.length > 0 ? detection.suggested : [...collectorBase.codeExtensions],
+    ignoreExts: [],
+    defaultAll: true
+  };
+  const fileFilter = defaultFileFilter(
+    shouldPromptForOptions() ? context.globalState.get<Partial<FileFilterOptions>>(LAST_FILTER_KEY) : undefined,
+    detectedFilter
+  );
+
+  const build = (t: ToggleOptions, s: SectionOptions, level: MinifyLevel, f: FileFilterOptions): ExportOptions =>
+    ({ ...t, target, minifyLevel: level, sections: s, fileFilter: f });
 
   if (!shouldPromptForOptions()) {
-    return { ...toggles, target, minifyLevel: getMinifyLevel(), sections };
+    return { ...toggles, target, minifyLevel: getMinifyLevel(), sections, fileFilter };
   }
 
-  // Rich webview config panel (Output | Sections | Fonts-hint | Header/Footer-hint).
+  // Rich webview config panel (Output | Files | Analysis Sections).
   // Falls back to the legacy QuickPick if the webview cannot be shown.
   try {
-    const result = await openExportPanel(context, target, toggles, getMinifyLevel(), sections);
+    const result = await openExportPanel(context, target, {
+      toggles, minifyLevel: getMinifyLevel(), sections, fileFilter, detection
+    });
     if (!result) return undefined;
-    return { ...result.toggles, target, minifyLevel: result.minifyLevel, sections: result.sections };
+    return { ...result.toggles, target, minifyLevel: result.minifyLevel, sections: result.sections, fileFilter: result.fileFilter };
   } catch (err) {
     output.appendLine(`[warn] Config panel unavailable, using QuickPick: ${err instanceof Error ? err.message : String(err)}`);
-    return pickOptionsQuickPick(context, target, toggles, sections, build);
+    return pickOptionsQuickPick(context, target, toggles, sections, fileFilter, build);
   }
 }
 
@@ -224,7 +262,8 @@ async function pickOptionsQuickPick(
   target: OutputTarget,
   toggles: ToggleOptions,
   sections: SectionOptions,
-  build: (t: ToggleOptions, s: SectionOptions, level: MinifyLevel) => ExportOptions
+  fileFilter: FileFilterOptions,
+  build: (t: ToggleOptions, s: SectionOptions, level: MinifyLevel, f: FileFilterOptions) => ExportOptions
 ): Promise<ExportOptions | undefined> {
   type Key = keyof ToggleOptions;
   const defs: { key: Key; label: string; detail: string; pdfOnly?: boolean }[] = [
@@ -255,7 +294,7 @@ async function pickOptionsQuickPick(
     folderStructure: chosen.has('folderStructure')
   };
   await context.globalState.update(LAST_OPTIONS_KEY, result);
-  return build(result, sections, getMinifyLevel());
+  return build(result, sections, getMinifyLevel(), fileFilter);
 }
 
 async function announcePdf(uri: vscode.Uri, fileCount: number, pages: number, note: string): Promise<void> {
