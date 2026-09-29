@@ -211,30 +211,45 @@ function renderFunctionList(out: string[], data: AnalysisResult, opts: ExportOpt
   }
 }
 
+function renderUsageKind(
+  out: string[], title: string, unit: 'use' | 'call',
+  entries: Map<string, import('./analysis/types').UsageRef[]>,
+  opts: ExportOptions, gap: () => void
+): boolean {
+  const o = opts.sections.usages;
+  out.push(`### ${title}`);
+  gap();
+  const names = [...entries.keys()].sort();
+  const empty: string[] = [];
+  let any = false;
+  for (const name of names) {
+    const hits = entries.get(name) ?? [];
+    if (hits.length === 0 && o.skipEmpty) {
+      empty.push(name);
+      continue;
+    }
+    out.push(`**${name}** — ${hits.length} ${unit}${hits.length === 1 ? '' : 's'}`);
+    if (hits.length === 0) out.push('- _(none)_');
+    for (const h of hits) out.push(`- \`${h.file}:${h.line}\` ${h.code.split('\n')[0].slice(0, 160)}`);
+    gap();
+    any = true;
+  }
+  if (empty.length > 0 && o.skipEmpty && o.summarizeEmpty) {
+    const shown = empty.slice(0, 100);
+    const rest = empty.length - shown.length;
+    const label = unit === 'use' ? 'classes' : 'functions';
+    out.push(`_${empty.length} ${label} with no ${unit}s:_ ${shown.join(', ')}${rest > 0 ? ` (+${rest} more)` : ''}`);
+    gap();
+    any = true;
+  }
+  if (!any && names.length > 0) out.push('_(no usages found)_');
+  return any;
+}
+
 function renderUsages(out: string[], data: AnalysisResult, opts: ExportOptions, gap: () => void): void {
   const o = opts.sections.usages;
-  if (o.enabledClasses) {
-    out.push('### Class usages');
-    gap();
-    for (const name of [...data.classUsages.keys()].sort()) {
-      const hits = data.classUsages.get(name) ?? [];
-      out.push(`**${name}** — ${hits.length} use${hits.length === 1 ? '' : 's'}`);
-      if (hits.length === 0) out.push('- _(none)_');
-      for (const h of hits) out.push(`- \`${h.file}:${h.line}\` ${h.code.split('\n')[0].slice(0, 160)}`);
-      gap();
-    }
-  }
-  if (o.enabledFunctions) {
-    out.push('### Function usages');
-    gap();
-    for (const name of [...data.functionUsages.keys()].sort()) {
-      const hits = data.functionUsages.get(name) ?? [];
-      out.push(`**${name}** — ${hits.length} call${hits.length === 1 ? '' : 's'}`);
-      if (hits.length === 0) out.push('- _(none)_');
-      for (const h of hits) out.push(`- \`${h.file}:${h.line}\` ${h.code.split('\n')[0].slice(0, 160)}`);
-      gap();
-    }
-  }
+  if (o.enabledClasses) renderUsageKind(out, 'Class usages', 'use', data.classUsages, opts, gap);
+  if (o.enabledFunctions) renderUsageKind(out, 'Function usages', 'call', data.functionUsages, opts, gap);
   if (data.truncated.usages) out.push('_(truncated: hit cap reached)_');
 }
 

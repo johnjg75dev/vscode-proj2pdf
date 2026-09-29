@@ -217,7 +217,9 @@ export function getSectionOptions(): SectionOptions {
       enabledClasses: get('usages.enabledClasses', d.usages.enabledClasses),
       enabledFunctions: get('usages.enabledFunctions', d.usages.enabledFunctions),
       contextLines: clamp(get('usages.contextLines', d.usages.contextLines), 0, 5, 0),
-      maxHitsPerSymbol: clamp(get('usages.maxHitsPerSymbol', d.usages.maxHitsPerSymbol), 1, 500, 50)
+      maxHitsPerSymbol: clamp(get('usages.maxHitsPerSymbol', d.usages.maxHitsPerSymbol), 1, 500, 50),
+      skipEmpty: get('usages.skipEmpty', d.usages.skipEmpty),
+      summarizeEmpty: get('usages.summarizeEmpty', d.usages.summarizeEmpty)
     },
     strings: {
       enabled: get('strings.enabled', d.strings.enabled),

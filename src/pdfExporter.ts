@@ -536,41 +536,86 @@ export async function renderPdf(req: PdfRenderRequest): Promise<PdfRenderResult>
     }
   };
 
+  /** Renders one kind (classes or functions) with skip-empty + summary support. */
+  const renderUsageKind = (
+    title: string,
+    unit: 'use' | 'call',
+    entries: Map<string, import('./analysis/types').UsageRef[]>
+  ): boolean => {
+    const o = options.sections.usages;
+    subHeading(title);
+    const names = [...entries.keys()].sort();
+    const empty: string[] = [];
+    let any = false;
+    for (const name of names) {
+      const hits = entries.get(name) ?? [];
+      if (hits.length === 0 && o.skipEmpty) {
+        empty.push(name);
+        continue;
+      }
+      bodyLine(`${name} — ${hits.length} ${unit}${hits.length === 1 ? '' : 's'}`, { bold: true });
+      if (hits.length === 0) {
+        bodyLine('(no usages found)', { italic: true, color: COLOR.muted, indent: 12 });
+      }
+      for (const h of hits) {
+        codeLine(`  ${h.file}:${h.line}: ${h.code.split('\n')[0]}`);
+      }
+      any = true;
+      markPage('', SECTION_TITLES.usages);
+    }
+    if (empty.length > 0 && o.skipEmpty && o.summarizeEmpty) {
+      summarizeEmptyNames(empty, unit);
+      any = true;
+    }
+    if (!any && names.length > 0) {
+      // Everything was skipped: say so instead of leaving a blank section.
+      bodyLine('(no usages found)', { italic: true, color: COLOR.muted });
+    }
+    return any;
+  };
+
+  /** Single combined line for all zero-hit symbols (truncated to 100 names). */
+  const summarizeEmptyNames = (empty: string[], unit: 'use' | 'call'): void => {
+    const shown = empty.slice(0, 100);
+    const rest = empty.length - shown.length;
+    const label = unit === 'use' ? 'classes' : 'functions';
+    ensure(bodyLineH + 2);
+    doc.font(fonts.bodyBold).fontSize(bodySize).fillColor(COLOR.muted)
+      .text(`${empty.length} ${label} with no ${unit}s:`, left, y, { lineBreak: false });
+    y += bodyLineH;
+    const namesText = shown.join(', ') + (rest > 0 ? ` (+${rest} more)` : '');
+    doc.font(fonts.body).fontSize(bodySize).fillColor(COLOR.muted);
+    // Wrap the name list across as many lines as needed.
+    const words = namesText.split(', ');
+    let line = '';
+    for (const w of words) {
+      const trial = line ? line + ', ' + w : w;
+      if (doc.widthOfString(trial) > contentW - 24 && line) {
+        ensure(bodyLineH);
+        doc.text(fit(clean(line), contentW - 24), left + 12, y, { lineBreak: false });
+        y += bodyLineH;
+        line = w;
+      } else {
+        line = trial;
+      }
+    }
+    if (line) {
+      ensure(bodyLineH);
+      doc.text(fit(clean(line), contentW - 24), left + 12, y, { lineBreak: false });
+      y += bodyLineH;
+    }
+    markPage('', SECTION_TITLES.usages);
+  };
+
   const renderUsages = () => {
     if (!analysis) return;
     const o = options.sections.usages;
     let any = false;
     if (o.enabledClasses) {
-      subHeading('Class usages');
-      const names = [...analysis.classUsages.keys()].sort();
-      for (const name of names) {
-        const hits = analysis.classUsages.get(name) ?? [];
-        bodyLine(`${name} — ${hits.length} use${hits.length === 1 ? '' : 's'}`, { bold: true });
-        if (hits.length === 0) {
-          bodyLine('(no usages found)', { italic: true, color: COLOR.muted, indent: 12 });
-        }
-        for (const h of hits) {
-          codeLine(`  ${h.file}:${h.line}: ${h.code.split('\n')[0]}`);
-        }
-        any = true;
-        markPage('', SECTION_TITLES.usages);
-      }
+      if (renderUsageKind('Class usages', 'use', analysis.classUsages)) any = true;
     }
     if (o.enabledFunctions) {
-      subHeading('Function usages');
-      const names = [...analysis.functionUsages.keys()].sort();
-      for (const name of names) {
-        const hits = analysis.functionUsages.get(name) ?? [];
-        bodyLine(`${name} — ${hits.length} call${hits.length === 1 ? '' : 's'}`, { bold: true });
-        if (hits.length === 0) {
-          bodyLine('(no usages found)', { italic: true, color: COLOR.muted, indent: 12 });
-        }
-        for (const h of hits) {
-          codeLine(`  ${h.file}:${h.line}: ${h.code.split('\n')[0]}`);
-        }
-        any = true;
-        markPage('', SECTION_TITLES.usages);
-      }
+      if (renderUsageKind('Function usages', 'call', analysis.functionUsages)) any = true;
     }
     if (!any) bodyLine('(usages disabled)', { italic: true, color: COLOR.muted });
     if (analysis.truncated.usages) {

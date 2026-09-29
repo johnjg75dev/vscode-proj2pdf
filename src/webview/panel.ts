@@ -148,7 +148,9 @@ function parseState(state: PanelState, target: 'pdf' | 'clipboard'): PanelResult
       enabledClasses: b('sec.usages.enabledClasses'),
       enabledFunctions: b('sec.usages.enabledFunctions'),
       contextLines: Math.min(5, Math.max(0, num('sec.usages.contextLines', 0))),
-      maxHitsPerSymbol: Math.min(500, Math.max(1, num('sec.usages.maxHitsPerSymbol', 50)))
+      maxHitsPerSymbol: Math.min(500, Math.max(1, num('sec.usages.maxHitsPerSymbol', 50))),
+      skipEmpty: state['sec.usages.skipEmpty'] === undefined ? true : b('sec.usages.skipEmpty'),
+      summarizeEmpty: state['sec.usages.summarizeEmpty'] === undefined ? true : b('sec.usages.summarizeEmpty')
     },
     strings: {
       enabled: b('sec.strings.enabled'),
@@ -321,6 +323,8 @@ ${target === 'pdf' ? `<label class="row"><input type="checkbox" id="syntaxHighli
 <label><input type="checkbox" id="sec.usages.enabledFunctions" ${checked(s.usages.enabledFunctions)}> Function usages</label>
 <label>Context lines <input type="number" id="sec.usages.contextLines" min="0" max="5" value="${s.usages.contextLines}"></label>
 <label>Max hits/symbol <input type="number" id="sec.usages.maxHitsPerSymbol" min="1" max="500" value="${s.usages.maxHitsPerSymbol}"></label>
+<label><input type="checkbox" id="sec.usages.skipEmpty" ${checked(s.usages.skipEmpty)}> Skip entries with 0 results</label>
+<label><input type="checkbox" id="sec.usages.summarizeEmpty" ${checked(s.usages.summarizeEmpty)}> Combine skipped into one line</label>
 </div></fieldset>
 
 <fieldset><legend><input type="checkbox" id="sec.strings.enabled" ${checked(s.strings.enabled)}> String List</legend>
@@ -350,7 +354,7 @@ ${target === 'pdf' ? `<label class="row"><input type="checkbox" id="syntaxHighli
 
 <script>
 const vscode = acquireVsCodeApi();
-const ids = ['includeMarkdown','syntaxHighlighting','minify','tableOfContents','folderStructure','minifyLevel','ff.extraInclude','ff.ignore','ff.policy','sec.placement','sec.classList.enabled','sec.classList.sort','sec.classList.groupBy','sec.classList.showCtor','sec.classList.showMethods','sec.classList.showFields','sec.classList.showDefaults','sec.classList.showBaseClass','sec.functionList.enabled','sec.functionList.sort','sec.functionList.groupBy','sec.functionList.includeMethods','sec.functionList.showSigs','sec.functionList.showDefaults','sec.usages.enabledClasses','sec.usages.enabledFunctions','sec.usages.contextLines','sec.usages.maxHitsPerSymbol','sec.strings.enabled','sec.strings.sort','sec.strings.groupBy','sec.strings.minLength','sec.strings.dedupe','sec.strings.maxItems','sec.dependencies.enabled','sec.dependencies.direction','sec.dependencies.showUnresolved'];
+const ids = ['includeMarkdown','syntaxHighlighting','minify','tableOfContents','folderStructure','minifyLevel','ff.extraInclude','ff.ignore','ff.policy','sec.placement','sec.classList.enabled','sec.classList.sort','sec.classList.groupBy','sec.classList.showCtor','sec.classList.showMethods','sec.classList.showFields','sec.classList.showDefaults','sec.classList.showBaseClass','sec.functionList.enabled','sec.functionList.sort','sec.functionList.groupBy','sec.functionList.includeMethods','sec.functionList.showSigs','sec.functionList.showDefaults','sec.usages.enabledClasses','sec.usages.enabledFunctions','sec.usages.contextLines','sec.usages.maxHitsPerSymbol','sec.usages.skipEmpty','sec.usages.summarizeEmpty','sec.strings.enabled','sec.strings.sort','sec.strings.groupBy','sec.strings.minLength','sec.strings.dedupe','sec.strings.maxItems','sec.dependencies.enabled','sec.dependencies.direction','sec.dependencies.showUnresolved'];
 function collect() {
   const state = {};
   for (const id of ids) {

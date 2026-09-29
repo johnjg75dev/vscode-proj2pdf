@@ -98,6 +98,10 @@ export interface UsagesOptions {
   enabledFunctions: boolean;
   contextLines: number;
   maxHitsPerSymbol: number;
+  /** Skip symbols with zero hits (do not render them). Default true. */
+  skipEmpty: boolean;
+  /** Combine all skipped zero-hit symbols into a single summary line. Default true. */
+  summarizeEmpty: boolean;
 }
 
 export interface StringListOptions {
@@ -136,7 +140,7 @@ export function defaultSectionOptions(): SectionOptions {
       enabled: false, sort: 'alpha', groupBy: 'flat',
       includeMethods: false, showSigs: true, showDefaults: true
     },
-    usages: { enabledClasses: false, enabledFunctions: false, contextLines: 0, maxHitsPerSymbol: 50 },
+    usages: { enabledClasses: false, enabledFunctions: false, contextLines: 0, maxHitsPerSymbol: 50, skipEmpty: true, summarizeEmpty: true },
     strings: { enabled: false, sort: 'alpha', groupBy: 'flat', minLength: 2, dedupe: true, maxItems: 5000 },
     dependencies: { enabled: false, direction: 'outgoing', showUnresolved: true },
     placement: 'before',

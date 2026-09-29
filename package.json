@@ -2,7 +2,7 @@
   "name": "vsc-project2pdf",
   "displayName": "Project Source Exporter",
   "description": "Export all source code in your project to a PDF (with syntax highlighting, TOC, folder tree, page numbers) or copy it to the clipboard.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "publisher": "johnjg75dev",
   "repository": "https://github.com/johnjg75dev/vscode-proj2pdf/",
   "license": "MIT",
@@ -495,6 +495,16 @@
           "default": 50,
           "minimum": 1,
           "maximum": 500
+        },
+        "projectExporter.sections.usages.skipEmpty": {
+          "type": "boolean",
+          "default": true,
+          "description": "Skip symbols with zero usages instead of rendering an entry each."
+        },
+        "projectExporter.sections.usages.summarizeEmpty": {
+          "type": "boolean",
+          "default": true,
+          "description": "Combine all skipped zero-usage symbols into a single summary line."
         },
         "projectExporter.sections.strings.enabled": {
           "type": "boolean",

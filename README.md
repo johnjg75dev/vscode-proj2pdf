@@ -46,6 +46,8 @@ Accurate parsing for TS/JS, Python, Java, C#, C++ and Go; best-effort heuristics
 - **Function List** (`sections.functionList.*`): same idea for functions (optionally including methods).
 - **Usages** (`sections.usages.*`): under each class name, every `file:line` that instantiates it;
   same for functions (call sites). Capped by `maxHitsPerSymbol`; definition lines are excluded.
+  `skipEmpty` (default on) omits symbols with zero hits; `summarizeEmpty` (default on)
+  combines them into a single `N functions with no calls: ...` line instead.
 - **String List** (`sections.strings.*`): string literals, alphabetized or by file, with min-length,
   dedupe and item-cap options.
 - **Dependencies** (`sections.dependencies.*`): under each file, the files it relies on (`outgoing`),

@@ -43,3 +43,9 @@
 - [x] `publish.bat` — menu: status, bump patch/minor/major/explicit, ci, compile, local vsix, commit+push, tag+push (Release), full flow, watch
 - [x] `npm run compile` clean; filter logic verified (parse/suggest/all/listed/empty)
 - [x] README (File Filter + publish.bat), .vscodeignore (publish.bat, TODO.md)
+
+## Usages skip-empty (v1.2.x candidate)
+- [x] `UsagesOptions.skipEmpty/summarizeEmpty` (both default true) + settings schema + config getter
+- [x] PDF + clipboard renderers: skip zero-hit symbols, single combined summary line (100-name cap), blank-section guard
+- [x] Panel checkboxes (`Skip entries with 0 results`, `Combine skipped into one line`) + parse/defaults
+- [x] Verified all 3 modes (skip+summary / legacy / skip-only) + PDF smoke test; README updated
