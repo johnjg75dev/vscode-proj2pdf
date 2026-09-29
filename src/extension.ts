@@ -1,16 +1,21 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import {
-  ExportOptions, OutputTarget, ToggleOptions,
+  ExportOptions, MinifyLevel, OutputTarget, ToggleOptions,
   getClipboardSettings, getCollectorSettings, getDefaultToggles,
-  getMinifyLevel, getPdfSettings, shouldPromptForOptions
+  getMinifyLevel, getPdfSettings, getSectionOptions, shouldPromptForOptions
 } from './config';
+import { SectionOptions } from './analysis/types';
 import { ExportScope, SkippedFile, collectFiles } from './fileCollector';
 import { renderPdf } from './pdfExporter';
 import { buildClipboardText } from './textExporter';
+import { analyzeFiles } from './analysis/index';
+import { openExportPanel } from './webview/panel';
+import { unknownVars } from './headerFooter';
 import { ExportCancelledError } from './util';
 
 const LAST_OPTIONS_KEY = 'projectExporter.lastOptions';
+const LAST_SECTIONS_KEY = 'projectExporter.lastSections';
 let output: vscode.OutputChannel;
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -77,12 +82,27 @@ async function runExport(
         }
         const skippedNote = skipped.length ? ` (${skipped.length} skipped - see Output)` : '';
 
+        const analysis = await analyzeFiles(files, options.sections, {
+          onProgress: report,
+          isCancelled: () => token.isCancellationRequested
+        });
+        if (analysis) {
+          output.appendLine(
+            `Analysis: ${analysis.classes.length} classes, ${analysis.functions.length} functions, ` +
+            `${analysis.strings.length} strings, ${analysis.dependencies.length} dependencies`
+          );
+        }
+
         if (target === 'pdf' && saveUri) {
+          const pdfSettings = getPdfSettings();
+          warnUnknownVars(pdfSettings.headerTemplate, 'pdf.headerTemplate');
+          warnUnknownVars(pdfSettings.footerTemplate, 'pdf.footerTemplate');
           const { data, pageCount } = await renderPdf({
             projectName: resolved.name,
             files,
             options,
-            settings: getPdfSettings(),
+            settings: pdfSettings,
+            analysis,
             onProgress: report,
             isCancelled: () => token.isCancellationRequested
           });
@@ -92,7 +112,10 @@ async function runExport(
           void announcePdf(saveUri, files.length, pageCount, skippedNote);
         } else {
           report('Building text...');
-          const text = buildClipboardText(resolved.name, files, options, getClipboardSettings());
+          const clipboardSettings = getClipboardSettings();
+          warnUnknownVars(clipboardSettings.headerTemplate, 'clipboard.headerTemplate');
+          warnUnknownVars(clipboardSettings.footerTemplate, 'clipboard.footerTemplate');
+          const text = buildClipboardText(resolved.name, files, options, clipboardSettings, analysis);
           await vscode.env.clipboard.writeText(text);
           const tokens = Math.round(text.length / 4);
           void vscode.window.showInformationMessage(
@@ -110,6 +133,14 @@ async function runExport(
     const message = err instanceof Error ? err.message : String(err);
     output.appendLine(`[error] ${err instanceof Error && err.stack ? err.stack : message}`);
     void vscode.window.showErrorMessage(`Project Exporter failed: ${message}`);
+  }
+}
+
+function warnUnknownVars(template: string, setting: string): void {
+  if (!template) return;
+  const bad = unknownVars(template);
+  if (bad.length > 0) {
+    output.appendLine(`[warn] ${setting}: unknown variable(s) ${bad.join(', ')} (left as-is)`);
   }
 }
 
@@ -165,10 +196,36 @@ async function pickOptions(
     ...getDefaultToggles(),
     ...(shouldPromptForOptions() ? context.globalState.get<Partial<ToggleOptions>>(LAST_OPTIONS_KEY) : {})
   };
-  const build = (t: ToggleOptions): ExportOptions => ({ ...t, target, minifyLevel: getMinifyLevel() });
+  const sections = {
+    ...getSectionOptions(),
+    ...(shouldPromptForOptions() ? context.globalState.get<Partial<import('./analysis/types').SectionOptions>>(LAST_SECTIONS_KEY) : {})
+  };
+  const build = (t: ToggleOptions, s: SectionOptions, level: MinifyLevel): ExportOptions =>
+    ({ ...t, target, minifyLevel: level, sections: s });
 
-  if (!shouldPromptForOptions()) return build(toggles);
+  if (!shouldPromptForOptions()) {
+    return { ...toggles, target, minifyLevel: getMinifyLevel(), sections };
+  }
 
+  // Rich webview config panel (Output | Sections | Fonts-hint | Header/Footer-hint).
+  // Falls back to the legacy QuickPick if the webview cannot be shown.
+  try {
+    const result = await openExportPanel(context, target, toggles, getMinifyLevel(), sections);
+    if (!result) return undefined;
+    return { ...result.toggles, target, minifyLevel: result.minifyLevel, sections: result.sections };
+  } catch (err) {
+    output.appendLine(`[warn] Config panel unavailable, using QuickPick: ${err instanceof Error ? err.message : String(err)}`);
+    return pickOptionsQuickPick(context, target, toggles, sections, build);
+  }
+}
+
+async function pickOptionsQuickPick(
+  context: vscode.ExtensionContext,
+  target: OutputTarget,
+  toggles: ToggleOptions,
+  sections: SectionOptions,
+  build: (t: ToggleOptions, s: SectionOptions, level: MinifyLevel) => ExportOptions
+): Promise<ExportOptions | undefined> {
   type Key = keyof ToggleOptions;
   const defs: { key: Key; label: string; detail: string; pdfOnly?: boolean }[] = [
     { key: 'includeMarkdown', label: '$(markdown) Include Markdown files', detail: '.md / .markdown / .mdx' },
@@ -185,7 +242,7 @@ async function pickOptions(
   const picked = await vscode.window.showQuickPick(items, {
     canPickMany: true,
     title: target === 'pdf' ? 'PDF export options' : 'Clipboard export options',
-    placeHolder: 'Select options, then press Enter'
+    placeHolder: 'Select options, then press Enter (analysis sections use Settings defaults)'
   });
   if (!picked) return undefined;
 
@@ -198,7 +255,7 @@ async function pickOptions(
     folderStructure: chosen.has('folderStructure')
   };
   await context.globalState.update(LAST_OPTIONS_KEY, result);
-  return build(result);
+  return build(result, sections, getMinifyLevel());
 }
 
 async function announcePdf(uri: vscode.Uri, fileCount: number, pages: number, note: string): Promise<void> {

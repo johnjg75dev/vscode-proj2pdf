@@ -1,9 +1,10 @@
 {
-  "name": "project-source-exporter",
+  "name": "vsc-project2pdf",
   "displayName": "Project Source Exporter",
   "description": "Export all source code in your project to a PDF (with syntax highlighting, TOC, folder tree, page numbers) or copy it to the clipboard.",
-  "version": "1.0.0",
-  "publisher": "your-publisher-name",
+  "version": "1.1.0",
+  "publisher": "johnjg75dev",
+  "repository": "https://github.com/johnjg75dev/vscode-proj2pdf/",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
@@ -293,12 +294,283 @@
         "projectExporter.pdf.fontPath": {
           "type": "string",
           "default": "",
-          "description": "Optional path to a monospace .ttf/.otf font (for full Unicode support, e.g. DejaVu Sans Mono). Empty = built-in Courier (Latin-1 only)."
+          "description": "Deprecated alias for projectExporter.pdf.fonts.code.path. Optional path to a monospace .ttf/.otf font (for full Unicode support, e.g. DejaVu Sans Mono)."
+        },
+        "projectExporter.pdf.fonts.body.family": {
+          "type": "string",
+          "default": "Helvetica",
+          "description": "Body/prose font for analysis sections (built-in: Courier, Courier-Bold, Helvetica, Helvetica-Bold, Times-Roman, or Custom with a path)."
+        },
+        "projectExporter.pdf.fonts.body.path": {
+          "type": "string",
+          "default": "",
+          "description": "Optional .ttf/.otf for the body font. Empty = use built-in family."
+        },
+        "projectExporter.pdf.fonts.body.size": {
+          "type": "number",
+          "default": 9,
+          "minimum": 4,
+          "maximum": 32
+        },
+        "projectExporter.pdf.fonts.code.family": {
+          "type": "string",
+          "default": "Courier",
+          "description": "Monospace font for source code listings."
+        },
+        "projectExporter.pdf.fonts.code.path": {
+          "type": "string",
+          "default": "",
+          "description": "Optional monospace .ttf/.otf (full Unicode). Empty = built-in Courier (Latin-1 only)."
+        },
+        "projectExporter.pdf.fonts.code.size": {
+          "type": "number",
+          "default": 8,
+          "minimum": 4,
+          "maximum": 32
+        },
+        "projectExporter.pdf.fonts.heading.family": {
+          "type": "string",
+          "default": "Helvetica-Bold",
+          "description": "Font for section headings and the title block."
+        },
+        "projectExporter.pdf.fonts.heading.path": {
+          "type": "string",
+          "default": ""
+        },
+        "projectExporter.pdf.fonts.heading.size": {
+          "type": "number",
+          "default": 14,
+          "minimum": 4,
+          "maximum": 32
+        },
+        "projectExporter.pdf.fonts.headerFooter.family": {
+          "type": "string",
+          "default": "Helvetica",
+          "description": "Font for page headers and footers."
+        },
+        "projectExporter.pdf.fonts.headerFooter.path": {
+          "type": "string",
+          "default": ""
+        },
+        "projectExporter.pdf.fonts.headerFooter.size": {
+          "type": "number",
+          "default": 8,
+          "minimum": 4,
+          "maximum": 32
+        },
+        "projectExporter.pdf.headerTemplate": {
+          "type": "string",
+          "default": "",
+          "description": "Page header template. Empty = no header. Variables: %%PAGE%% %%PAGES%% %%PROJECT%% %%DATE%% %%TIME%% %%FILE%% %%FILECOUNT%% %%SECTION%%."
+        },
+        "projectExporter.pdf.footerTemplate": {
+          "type": "string",
+          "default": "%%PROJECT%% | Page %%PAGE%% of %%PAGES%%",
+          "description": "Page footer template. Empty = no footer. Same %%VARS%% as header."
+        },
+        "projectExporter.pdf.sectionsPlacement": {
+          "type": "string",
+          "enum": [
+            "before",
+            "after"
+          ],
+          "default": "before",
+          "description": "Render analysis sections before or after the source files."
         },
         "projectExporter.clipboard.useCodeFences": {
           "type": "boolean",
           "default": true,
           "description": "Wrap each file in Markdown ``` code fences when copying to the clipboard."
+        },
+        "projectExporter.clipboard.headerTemplate": {
+          "type": "string",
+          "default": "",
+          "description": "Header prepended to clipboard output. Supports %%PROJECT%% %%DATE%% %%TIME%% %%FILECOUNT%% (page vars render empty)."
+        },
+        "projectExporter.clipboard.footerTemplate": {
+          "type": "string",
+          "default": "",
+          "description": "Footer appended to clipboard output. Same vars as clipboard header."
+        },
+        "projectExporter.sections.classList.enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "projectExporter.sections.classList.sort": {
+          "type": "string",
+          "enum": [
+            "alpha",
+            "file",
+            "folder"
+          ],
+          "default": "alpha"
+        },
+        "projectExporter.sections.classList.groupBy": {
+          "type": "string",
+          "enum": [
+            "flat",
+            "file",
+            "folder"
+          ],
+          "default": "flat"
+        },
+        "projectExporter.sections.classList.showCtor": {
+          "type": "boolean",
+          "default": true
+        },
+        "projectExporter.sections.classList.showMethods": {
+          "type": "boolean",
+          "default": false
+        },
+        "projectExporter.sections.classList.showFields": {
+          "type": "string",
+          "enum": [
+            "both",
+            "public",
+            "private",
+            "none"
+          ],
+          "default": "none"
+        },
+        "projectExporter.sections.classList.showDefaults": {
+          "type": "boolean",
+          "default": true
+        },
+        "projectExporter.sections.classList.showBaseClass": {
+          "type": "boolean",
+          "default": true
+        },
+        "projectExporter.sections.functionList.enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "projectExporter.sections.functionList.sort": {
+          "type": "string",
+          "enum": [
+            "alpha",
+            "file",
+            "folder"
+          ],
+          "default": "alpha"
+        },
+        "projectExporter.sections.functionList.groupBy": {
+          "type": "string",
+          "enum": [
+            "flat",
+            "file",
+            "folder"
+          ],
+          "default": "flat"
+        },
+        "projectExporter.sections.functionList.includeMethods": {
+          "type": "boolean",
+          "default": false
+        },
+        "projectExporter.sections.functionList.showSigs": {
+          "type": "boolean",
+          "default": true
+        },
+        "projectExporter.sections.functionList.showDefaults": {
+          "type": "boolean",
+          "default": true
+        },
+        "projectExporter.sections.usages.enabledClasses": {
+          "type": "boolean",
+          "default": false,
+          "description": "Under each class name, list every file->line that instantiates it."
+        },
+        "projectExporter.sections.usages.enabledFunctions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Under each function name, list every file->line that calls it."
+        },
+        "projectExporter.sections.usages.contextLines": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 5
+        },
+        "projectExporter.sections.usages.maxHitsPerSymbol": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 500
+        },
+        "projectExporter.sections.strings.enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "projectExporter.sections.strings.sort": {
+          "type": "string",
+          "enum": [
+            "alpha",
+            "file",
+            "folder"
+          ],
+          "default": "alpha"
+        },
+        "projectExporter.sections.strings.groupBy": {
+          "type": "string",
+          "enum": [
+            "flat",
+            "file"
+          ],
+          "default": "flat"
+        },
+        "projectExporter.sections.strings.minLength": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 100
+        },
+        "projectExporter.sections.strings.dedupe": {
+          "type": "boolean",
+          "default": true
+        },
+        "projectExporter.sections.strings.maxItems": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 100,
+          "maximum": 50000
+        },
+        "projectExporter.sections.dependencies.enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "projectExporter.sections.dependencies.direction": {
+          "type": "string",
+          "enum": [
+            "outgoing",
+            "incoming",
+            "both"
+          ],
+          "default": "outgoing"
+        },
+        "projectExporter.sections.dependencies.showUnresolved": {
+          "type": "boolean",
+          "default": true
+        },
+        "projectExporter.sections.placement": {
+          "type": "string",
+          "enum": [
+            "before",
+            "after"
+          ],
+          "default": "before"
+        },
+        "projectExporter.sections.order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "classList",
+            "functionList",
+            "usages",
+            "strings",
+            "dependencies"
+          ],
+          "description": "Render order of analysis sections."
         }
       }
     }
