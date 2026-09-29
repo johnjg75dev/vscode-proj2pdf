@@ -599,7 +599,7 @@
   "devDependencies": {
     "@types/node": "^18.19.130",
     "@types/pdfkit": "^0.13.9",
-    "@types/vscode": "^1.138.0",
+    "@types/vscode": "1.85.0",
     "@vscode/vsce": "^4.0.0",
     "typescript": "^5.9.3"
   },
