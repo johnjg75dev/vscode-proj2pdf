@@ -2,7 +2,7 @@
   "name": "vsc-project2pdf",
   "displayName": "Project Source Exporter",
   "description": "Export all source code in your project to a PDF (with syntax highlighting, TOC, folder tree, page numbers) or copy it to the clipboard.",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "publisher": "johnjg75dev",
   "repository": "https://github.com/johnjg75dev/vscode-proj2pdf/",
   "license": "MIT",

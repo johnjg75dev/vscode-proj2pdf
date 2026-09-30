@@ -6,13 +6,15 @@ import {
   getMinifyLevel, getPdfSettings, getSectionOptions, resolveCollectorSettings,
   shouldPromptForOptions
 } from './config';
-import { SectionOptions } from './analysis/types';
-import { ExportScope, SkippedFile, collectFiles } from './fileCollector';
+import { SectionOptions, disableAllSections } from './analysis/types';
+import { ExportScope, SkippedFile, collectFiles, listGitignoreFiles, previewFiles } from './fileCollector';
 import { renderPdf } from './pdfExporter';
 import { buildClipboardText } from './textExporter';
 import { analyzeFiles } from './analysis/index';
-import { openExportPanel } from './webview/panel';
+import { PanelHooks, PreviewData, openExportPanel } from './webview/panel';
+import { PresetData, PresetScope, deletePreset, getPreset, listPresets, promptChoosePreset, promptPresetTarget, savePreset } from './presets';
 import { detectProject } from './projectDetect';
+import { defaultFileFilter } from './config';
 import { unknownVars } from './headerFooter';
 import { ExportCancelledError } from './util';
 
@@ -53,8 +55,9 @@ async function runExport(
     const target = presetTarget ?? (await pickTarget());
     if (!target) return;
 
-    const options = await pickOptions(context, target, resolved.scopes);
-    if (!options) return;
+    const picked = await pickOptions(context, target, resolved.scopes);
+    if (!picked) return;
+    const { options, dropped } = picked;
 
     let saveUri: vscode.Uri | undefined;
     if (target === 'pdf') {
@@ -76,10 +79,14 @@ async function runExport(
         output.appendLine(
           `File filter: include [${collectorSettings.codeExtensions.join(', ')}]` +
           (options.fileFilter.ignoreExts.length ? `, ignore [${options.fileFilter.ignoreExts.join(', ')}]` : '') +
-          ` (default-${options.fileFilter.defaultAll ? 'all' : 'listed'})`
+          (options.fileFilter.extraIgnores.length ? `, extra ignores [${options.fileFilter.extraIgnores.join(', ')}]` : '') +
+          ` (default-${options.fileFilter.defaultAll ? 'all' : 'listed'}, ` +
+          `gitignore ${collectorSettings.respectGitignore ? 'on' : 'off'}` +
+          (dropped.length ? `, ${dropped.length} file(s) deselected` : '') + ')'
         );
         const { files, skipped } = await collectFiles(
-          resolved.scopes, collectorSettings, options.includeMarkdown, token, report
+          resolved.scopes, collectorSettings, options.includeMarkdown, token, report,
+          dropped.length ? new Set(dropped) : undefined
         );
         logSkipped(skipped);
 
@@ -197,22 +204,17 @@ async function pickTarget(): Promise<OutputTarget | undefined> {
   return pick?.target;
 }
 
-function defaultFileFilter(stored: Partial<FileFilterOptions> | undefined, fallback: FileFilterOptions): FileFilterOptions {
-  if (!stored || (stored.includeExts === undefined && stored.ignoreExts === undefined && stored.defaultAll === undefined)) {
-    return fallback;
-  }
-  return {
-    includeExts: stored.includeExts ?? fallback.includeExts,
-    ignoreExts: stored.ignoreExts ?? fallback.ignoreExts,
-    defaultAll: stored.defaultAll ?? fallback.defaultAll
-  };
+export interface PickedExport {
+  options: ExportOptions;
+  /** Per-file drop list from the panel tree (relPaths). */
+  dropped: string[];
 }
 
 async function pickOptions(
   context: vscode.ExtensionContext,
   target: OutputTarget,
   scopes: ExportScope[]
-): Promise<ExportOptions | undefined> {
+): Promise<PickedExport | undefined> {
   const toggles: ToggleOptions = {
     ...getDefaultToggles(),
     ...(shouldPromptForOptions() ? context.globalState.get<Partial<ToggleOptions>>(LAST_OPTIONS_KEY) : {})
@@ -222,35 +224,91 @@ async function pickOptions(
     ...(shouldPromptForOptions() ? context.globalState.get<Partial<import('./analysis/types').SectionOptions>>(LAST_SECTIONS_KEY) : {})
   };
   const collectorBase = getCollectorSettings();
+  const excludeGlob = collectorBase.exclude.length ? `{${collectorBase.exclude.join(',')}}` : null;
 
   // Detect the project type + present extensions so the panel can pre-select
   // what the user most likely wants. Fast and failure-proof (falls back to config).
-  const detection = await detectProject(scopes, collectorBase.exclude.length ? `{${collectorBase.exclude.join(',')}}` : null);
-  const detectedFilter: FileFilterOptions = {
-    includeExts: detection.suggested.length > 0 ? detection.suggested : [...collectorBase.codeExtensions],
-    ignoreExts: [],
-    defaultAll: true
-  };
+  const detection = await detectProject(scopes, excludeGlob);
   const fileFilter = defaultFileFilter(
+    collectorBase.respectGitignore,
     shouldPromptForOptions() ? context.globalState.get<Partial<FileFilterOptions>>(LAST_FILTER_KEY) : undefined,
-    detectedFilter
+    detection.suggested.length > 0 ? detection.suggested : [...collectorBase.codeExtensions]
   );
 
-  const build = (t: ToggleOptions, s: SectionOptions, level: MinifyLevel, f: FileFilterOptions): ExportOptions =>
-    ({ ...t, target, minifyLevel: level, sections: s, fileFilter: f });
+  const build = (t: ToggleOptions, s: SectionOptions, level: MinifyLevel, f: FileFilterOptions): PickedExport => ({
+    options: { ...t, target, minifyLevel: level, sections: s, fileFilter: f },
+    dropped: []
+  });
 
   if (!shouldPromptForOptions()) {
-    return { ...toggles, target, minifyLevel: getMinifyLevel(), sections, fileFilter };
+    return build(toggles, sections, getMinifyLevel(), fileFilter);
   }
 
-  // Rich webview config panel (Output | Files | Analysis Sections).
+  // Rich webview config panel (preset bar, Output, Files + live tree, Analysis).
   // Falls back to the legacy QuickPick if the webview cannot be shown.
   try {
+    // Cancellation for the pre-panel scans (panel close aborts them).
+    const scanCts = new vscode.CancellationTokenSource();
+    const previewSettings = resolveCollectorSettings(collectorBase, fileFilter);
+    const [preview, gitignoreFiles] = await Promise.all([
+      previewFiles(scopes, previewSettings, toggles.includeMarkdown, scanCts.token).catch(() => ({ included: [], ignored: [], truncated: false })),
+      listGitignoreFiles(scopes, excludeGlob, scanCts.token).catch(() => [] as string[])
+    ]);
+
+    const hooks: PanelHooks = {
+      refreshPreview: async (filter, includeMarkdown): Promise<PreviewData> => {
+        const cts = new vscode.CancellationTokenSource();
+        try {
+          const settings = resolveCollectorSettings(getCollectorSettings(), filter);
+          return await previewFiles(scopes, settings, includeMarkdown, cts.token);
+        } finally {
+          cts.dispose();
+        }
+      },
+      savePreset: async (data) => {
+        const target = await promptPresetTarget(context);
+        if (!target) return undefined;
+        await savePreset(context, target.name, target.scope, data);
+        void vscode.window.showInformationMessage(
+          `Saved preset "${target.name}" (${target.scope === 'global' ? 'global' : 'this workspace'}).`
+        );
+        return { name: target.name, scope: target.scope };
+      },
+      deletePreset: async (name, scope) => {
+        const confirm = await vscode.window.showQuickPick(['Delete', 'Cancel'], {
+          title: `Delete preset "${name}" (${scope})?`
+        });
+        if (confirm !== 'Delete') return false;
+        return deletePreset(context, name, scope);
+      },
+      loadPreset: (name, scope) => {
+        const p = getPreset(context, name, scope as PresetScope);
+        return p ? {
+          toggles: p.toggles, minifyLevel: p.minifyLevel, sections: p.sections,
+          analysisEnabled: p.analysisEnabled, fileFilter: p.fileFilter
+        } : undefined;
+      },
+      listPresets: () => listPresets(context).map((p) => ({ name: p.name, scope: p.scope }))
+    };
+
+    const analysisEnabled = true; // master toggle defaults on; panel state rules after
     const result = await openExportPanel(context, target, {
-      toggles, minifyLevel: getMinifyLevel(), sections, fileFilter, detection
-    });
+      toggles, minifyLevel: getMinifyLevel(), sections, analysisEnabled,
+      fileFilter, detection, preview, gitignoreFiles,
+      presets: hooks.listPresets()
+    }, hooks);
+    scanCts.dispose();
     if (!result) return undefined;
-    return { ...result.toggles, target, minifyLevel: result.minifyLevel, sections: result.sections, fileFilter: result.fileFilter };
+    // Master Analysis toggle off => render with every section disabled (raw
+    // values are preserved for presets and re-enabling).
+    const effectiveSections = result.analysisEnabled ? result.sections : disableAllSections(result.sections);
+    return {
+      options: {
+        ...result.toggles, target, minifyLevel: result.minifyLevel,
+        sections: effectiveSections, fileFilter: result.fileFilter
+      },
+      dropped: result.dropped
+    };
   } catch (err) {
     output.appendLine(`[warn] Config panel unavailable, using QuickPick: ${err instanceof Error ? err.message : String(err)}`);
     return pickOptionsQuickPick(context, target, toggles, sections, fileFilter, build);
@@ -263,8 +321,8 @@ async function pickOptionsQuickPick(
   toggles: ToggleOptions,
   sections: SectionOptions,
   fileFilter: FileFilterOptions,
-  build: (t: ToggleOptions, s: SectionOptions, level: MinifyLevel, f: FileFilterOptions) => ExportOptions
-): Promise<ExportOptions | undefined> {
+  build: (t: ToggleOptions, s: SectionOptions, level: MinifyLevel, f: FileFilterOptions) => PickedExport
+): Promise<PickedExport | undefined> {
   type Key = keyof ToggleOptions;
   const defs: { key: Key; label: string; detail: string; pdfOnly?: boolean }[] = [
     { key: 'includeMarkdown', label: '$(markdown) Include Markdown files', detail: '.md / .markdown / .mdx' },

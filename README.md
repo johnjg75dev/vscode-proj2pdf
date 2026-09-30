@@ -35,6 +35,24 @@ then pre-selects what you most likely want (with per-extension file counts).
 - **Extensions to ignore**: always wins over the include list (e.g. `map, lock`).
 - **Files with other extensions**: `Include` (default to all files — also pulls in any other
   known code types from Settings) or `Exclude` (only the listed files, i.e. default to no files).
+- **Ignore rules**: a `Use .gitignore` checkbox (per-export override of the
+  `projectExporter.respectGitignore` setting, with the detected `.gitignore` files listed)
+  plus `Extra ignore globs` for one-off patterns.
+- **Selected files tree**: live preview of exactly which files match, with sizes and
+  `.gitignore`-excluded rows greyed out. Uncheck files/folders to drop them (dropped wins
+  over all rules; session-only). Search box, select-all/none, reset picks; auto-refreshes
+  (debounced) as filter settings change.
+
+## Presets
+The preset bar at the top of the export page stores every setting except per-file picks.
+Choose `Custom…`, a 🌐 global preset (all workspaces) or a 📁 workspace preset; `Save as
+preset…` prompts for a name and scope (global vs this workspace, with overwrite confirm),
+`Delete` removes the selected one (with confirm).
+
+## Analysis
+The Analysis block has a master on/off switch — turning it off hides every sub-section
+while preserving their settings. Each section header also collapses individually, and a
+section's own checkbox hides its detail options until enabled.
 
 ## Analysis Sections
 Optional appendices enabled per section in the export panel or via `projectExporter.sections.*` settings.

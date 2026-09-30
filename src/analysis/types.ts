@@ -148,6 +148,18 @@ export function defaultSectionOptions(): SectionOptions {
   };
 }
 
+/** Returns a copy with every section switched off (master Analysis toggle). */
+export function disableAllSections(s: SectionOptions): SectionOptions {
+  const c: SectionOptions = JSON.parse(JSON.stringify(s)) as SectionOptions;
+  c.classList.enabled = false;
+  c.functionList.enabled = false;
+  c.usages.enabledClasses = false;
+  c.usages.enabledFunctions = false;
+  c.strings.enabled = false;
+  c.dependencies.enabled = false;
+  return c;
+}
+
 /** True when at least one analysis section will be rendered. */
 export function anySectionEnabled(s: SectionOptions): boolean {
   return s.classList.enabled || s.functionList.enabled ||

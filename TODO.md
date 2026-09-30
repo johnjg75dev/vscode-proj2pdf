@@ -49,3 +49,11 @@
 - [x] PDF + clipboard renderers: skip zero-hit symbols, single combined summary line (100-name cap), blank-section guard
 - [x] Panel checkboxes (`Skip entries with 0 results`, `Combine skipped into one line`) + parse/defaults
 - [x] Verified all 3 modes (skip+summary / legacy / skip-only) + PDF smoke test; README updated
+
+## Panel: gitignore toggle + collapsible Analysis + file tree + presets (v1.3.0)
+- [x] `fileCollector`: shared `scanCandidates()` (preview capped, collection uncapped), `previewFiles()`, `listGitignoreFiles()`, `dropped` set support
+- [x] `config`: `FileFilterOptions` += `respectGitignore`/`extraIgnores`, `defaultFileFilter()` helper
+- [x] `presets.ts`: global/workspace CRUD, name validation, save scope prompt, chooser
+- [x] `panel.ts`: preset bar, master Analysis toggle + per-section collapse (state-preserving), gitignore UI, live debounced tree (search/select-all/folder states/counter), host protocol
+- [x] `extension.ts`: pre-panel preview scan, hooks (refresh/save/delete/load), master-off => `disableAllSections`, dropped => `collectFiles`
+- [x] 28/28 logic+protocol tests, PDF/clipboard render smoke, `tsc` clean; README updated

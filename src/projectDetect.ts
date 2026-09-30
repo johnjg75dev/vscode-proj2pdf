@@ -131,3 +131,13 @@ export function parseExtList(input: string): string[] {
   }
   return out;
 }
+
+/** Splits free-form glob input (comma/newline separated) into clean patterns. */
+export function parseGlobList(input: string): string[] {
+  const out: string[] = [];
+  for (const part of input.split(/[\n,]+/)) {
+    const t = part.trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+}

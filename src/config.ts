@@ -22,6 +22,10 @@ export interface FileFilterOptions {
    * are not listed (default-all behavior). False = only the listed ones.
    */
   defaultAll: boolean;
+  /** Honor .gitignore files (overrides settings for this export). */
+  respectGitignore: boolean;
+  /** Extra vscode-style ignore globs for this export, appended to excludes. */
+  extraIgnores: string[];
 }
 
 export interface ExportOptions extends ToggleOptions {
@@ -52,7 +56,32 @@ export function resolveCollectorSettings(
     const glob = `**/*.${e}`;
     if (!exclude.includes(glob)) exclude.push(glob);
   }
-  return { ...base, codeExtensions, exclude };
+  for (const g of filter.extraIgnores.map((s) => s.trim()).filter(Boolean)) {
+    if (!exclude.includes(g)) exclude.push(g);
+  }
+  return { ...base, codeExtensions, exclude, respectGitignore: filter.respectGitignore };
+}
+
+/** Default per-export filter values derived from settings + detection. */
+export function defaultFileFilter(
+  respectGitignore: boolean,
+  stored: Partial<FileFilterOptions> | undefined,
+  fallbackInclude: string[]
+): FileFilterOptions {
+  if (!stored || (
+    stored.includeExts === undefined && stored.ignoreExts === undefined &&
+    stored.defaultAll === undefined && stored.respectGitignore === undefined &&
+    stored.extraIgnores === undefined
+  )) {
+    return { includeExts: fallbackInclude, ignoreExts: [], defaultAll: true, respectGitignore, extraIgnores: [] };
+  }
+  return {
+    includeExts: stored.includeExts ?? fallbackInclude,
+    ignoreExts: stored.ignoreExts ?? [],
+    defaultAll: stored.defaultAll ?? true,
+    respectGitignore: stored.respectGitignore ?? respectGitignore,
+    extraIgnores: stored.extraIgnores ?? []
+  };
 }
 
 export interface CollectorSettings {
